@@ -41,30 +41,24 @@ class PriceScheme {
     });
     this.data = simplified.sort((prev, curr) => prev.operatingHour - curr.operatingHour);
     // Here I'll need to replace the logic wtih 
-    console.log('smart algorithm returns', this.findNextMax(this.data, 0));
+    console.log('smart algorithm returns', this.findNextMin(this.data, 0));
     console.log('log', this.log);
-    // console.log(this.calcProfit());
-
+    console.log('profit', this.calcProfit());
+    console.log('ending State of Charge', this.calcStateOfCharge());
   }
   findNextMax(data, i){
     while (i < data.length && !this.isMax(data, i)) {
       i++
     }
-    console.log(data, i);
     data = this.sell(data, i);
     i += 1;
-    console.log(data, i);
     if (i < data.length) {
-      console.log('find next min block')
       return this.findNextMin(data, i);
     } else {
       return data;
-      console.log(data, this.log)
-      // how to trigger next loop?
     }
   }
   findNextMin(data, i){
-    console.log('findNextMin', data, i)
     while (i < data.length && !this.isMin(data, i)) {
       this.hold(data, i);
       i++
@@ -92,7 +86,9 @@ class PriceScheme {
   buy(data, i){
     this.log.push({
       transaction: 'buy',
-      price: data[i].price * -1
+      price: data[i].price * -1,
+      index: i,
+      operatingHour: data[i].operatingHour
     })
     data.splice(i, 0);
     return data;
@@ -100,7 +96,9 @@ class PriceScheme {
   sell(data, i){
     this.log.push({
       transaction: 'sell',
-      price: data[i].price
+      price: data[i].price,
+      index: i,
+      operatingHour: data[i].operatingHour
     });
     data.splice(i, 0)
     return data;
@@ -109,33 +107,30 @@ class PriceScheme {
     return data.splice(i, 0);
   }
   calcProfit(){
-    return this.log.reduce(prev, next => prev.price + next.price)
+    return this.log.map(hour => hour.price).reduce((accumulator, curr) => {
+      return accumulator + curr})
   }
-  decide(){
-    // console.log(this.currHour);
-    const price = this.data[this.currHour].price;
-    const nextPrice = this.data[this.currHour + 1] ? this.data[this.currHour + 1].price : 0;
-    if (price > nextPrice && this.batteryState > 0) {
-      this.sell();
-    } else if (price < nextPrice && this.batteryState < this.batteryLim) {
-      this.buy();
-    }
-
-    if (this.currHour < this.data.length-1) {
-      this.currHour += 1;
-      this.decide();
-    } else {
-      // console.log(this.data)
-      console.log(this.money)
-      console.log(this.batteryState)
-    }
+  calcStateOfCharge(){
+    const mapped = this.log.map(hour => {
+      if (hour.transaction === 'buy') {
+        return 1
+      } else if (hour.transaction === 'sell') {
+        return -1
+      }
+    });
+    return mapped.reduce((accumulator, curr, index)=> {
+      const sum = accumulator + curr;
+      if (sum < 0 || sum > this.batteryLim) {
+        console.warn(`state of charge out of bounds. Value of ${sum} at index ${this.log[index].index} and operating hour ${this.log[index].operatingHour}`);
+      }
+      return sum
+    })
   }
 
 }
 
 const priceScheme = new PriceScheme;
 priceScheme.import();
-// priceScheme.decide();
 
 // situations -
 
