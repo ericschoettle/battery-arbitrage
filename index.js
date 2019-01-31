@@ -10,10 +10,9 @@ const outputFileName = process.env.OUTPUTFILENAME || 'results.txt'
 
 class PriceScheme {
   constructor() {
-    this.batteryState = 0;//hours of charge
-    this.money = 0; // 
-    this.currHour = 0
-    this.batteryLim = 1;//hours
+    this.initialBatteryState = 1;//hours of charge
+    this.initialMoney = 0; // 
+    this.batteryLim = 3;//hours
     this.data = [];
     this.log = [];
   }
@@ -41,10 +40,25 @@ class PriceScheme {
     });
     this.data = simplified.sort((prev, curr) => prev.operatingHour - curr.operatingHour);
     // Here I'll need to replace the logic wtih 
-    console.log('smart algorithm returns', this.findNextMin(this.data, 0));
-    console.log('log', this.log);
-    console.log('profit', this.calcProfit());
-    console.log('ending State of Charge', this.calcStateOfCharge());
+    // this.findNextMin(this.data, 0);
+    // console.log('log', this.log);
+    // console.log('AccountBalance', this.calcAccountBalance());
+    // console.log('ending State of Charge', this.calcStateOfCharge());
+    priceScheme.plan();
+    console.log(priceScheme.log)
+    console.log(priceScheme.calcAccountBalance())
+    console.log(priceScheme.calcStateOfCharge())
+  }
+  plan(){
+    let data = this.data;
+    // Buy first action - spare capacity in battery
+    for (let i = 0; i < this.batteryLim - this.initialBatteryState; i++) {
+      data = this.findNextMin(data, 0);  
+    }
+    // Sell first action - energy in battery
+    for (let i = 0; i < this.initialBatteryState; i++) {
+      data = this.findNextMax(data, 0) 
+    }
   }
   findNextMax(data, i){
     while (i < data.length && !this.isMax(data, i)) {
@@ -86,7 +100,7 @@ class PriceScheme {
   buy(data, i){
     this.log.push({
       transaction: 'buy',
-      price: data[i].price * -1,
+      price: data[i].price,
       index: i,
       operatingHour: data[i].operatingHour
     })
@@ -96,7 +110,7 @@ class PriceScheme {
   sell(data, i){
     this.log.push({
       transaction: 'sell',
-      price: data[i].price,
+      price: data[i].price * -1,
       index: i,
       operatingHour: data[i].operatingHour
     });
@@ -106,8 +120,8 @@ class PriceScheme {
   hold(data, i){
     return data.splice(i, 0);
   }
-  calcProfit(){
-    return this.log.map(hour => hour.price).reduce((accumulator, curr) => {
+  calcAccountBalance(){
+    return -1 * this.log.map(hour => hour.price).reduce((accumulator, curr) => {
       return accumulator + curr})
   }
   calcStateOfCharge(){
@@ -131,6 +145,7 @@ class PriceScheme {
 
 const priceScheme = new PriceScheme;
 priceScheme.import();
+
 
 // situations -
 
