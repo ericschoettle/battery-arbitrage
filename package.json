@@ -1,0 +1,16 @@
+{
+  "name": "energy",
+  "version": "1.0.0",
+  "description": "Playinng with energy data",
+  "main": "index.js",
+  "bin": {
+    "energy": "./index.js"
+  },
+  "private": true,
+  "author": "Eric Schoettle",
+  "license": "ISC",
+  "dependencies": {
+    "csvtojson": "^2.0.8",
+    "moment": "^2.24.0"
+  }
+}
