@@ -5,18 +5,20 @@ const moment=require('moment');
 
 const filepath = process.env.FILEPATH || process.env.PWD;
 const inputFileName = process.env.INPUTFILENAME || 'dam.csv';
-const outputFileName = process.env.OUTPUTFILENAME || 'results.txt'
+const outputFileName = process.env.OUTPUTFILENAME || 'results.txt';
 
 
 class PriceScheme {
   constructor() {
-    this.initialBatteryState = 1;//hours of charge
+    this.initialBatteryState = 3;//hours of charge
     this.initialMoney = 0; // 
-    this.batteryLim = 3;//hours
+    this.batteryLim = 3; //hours
     this.data = [];
     this.log = [];
   }
   import(){
+    console.log(process.env.FILEPATH)
+    console.log(`${filepath}/${inputFileName}`)
     csv()
       .fromFile(`${filepath}/${inputFileName}`)
       .then((jsonObj)=>{ 
@@ -45,19 +47,18 @@ class PriceScheme {
     // console.log('AccountBalance', this.calcAccountBalance());
     // console.log('ending State of Charge', this.calcStateOfCharge());
     priceScheme.plan();
-    console.log(priceScheme.log)
     console.log(priceScheme.calcAccountBalance())
     console.log(priceScheme.calcStateOfCharge())
   }
-  plan(){
+  plan(){ 
     let data = this.data;
     // Buy first action - spare capacity in battery
     for (let i = 0; i < this.batteryLim - this.initialBatteryState; i++) {
-      data = this.findNextMin(data, 0);  
+      data = this.findNextMin(data, 0);
     }
     // Sell first action - energy in battery
     for (let i = 0; i < this.initialBatteryState; i++) {
-      data = this.findNextMax(data, 0) 
+      data = this.findNextMax(data, 0);
     }
   }
   findNextMax(data, i){
@@ -65,7 +66,6 @@ class PriceScheme {
       i++
     }
     data = this.sell(data, i);
-    i += 1;
     if (i < data.length) {
       return this.findNextMin(data, i);
     } else {
@@ -78,7 +78,6 @@ class PriceScheme {
       i++
     }
     data = this.buy(data, i);
-    i += 1;
     if (i < data.length) {
       return this.findNextMax(data, i);
     } else {
@@ -101,20 +100,18 @@ class PriceScheme {
     this.log.push({
       transaction: 'buy',
       price: data[i].price,
-      index: i,
       operatingHour: data[i].operatingHour
     })
-    data.splice(i, 0);
+    data.splice(i, 1);
     return data;
   }
   sell(data, i){
     this.log.push({
       transaction: 'sell',
       price: data[i].price * -1,
-      index: i,
       operatingHour: data[i].operatingHour
     });
-    data.splice(i, 0)
+    data.splice(i, 1)
     return data;
   }
   hold(data, i){
@@ -125,7 +122,8 @@ class PriceScheme {
       return accumulator + curr})
   }
   calcStateOfCharge(){
-    const mapped = this.log.map(hour => {
+    const sorted = this.log.sort((prev, curr) => prev.operatingHour - curr.operatingHour);
+    const mapped = sorted.map(hour => {
       if (hour.transaction === 'buy') {
         return 1
       } else if (hour.transaction === 'sell') {
@@ -138,7 +136,7 @@ class PriceScheme {
         console.warn(`state of charge out of bounds. Value of ${sum} at index ${this.log[index].index} and operating hour ${this.log[index].operatingHour}`);
       }
       return sum
-    })
+    }, this.initialBatteryState);
   }
 
 }
