@@ -7,6 +7,8 @@ const filepath = process.env.FILEPATH || process.env.PWD;
 const inputFileName = process.env.INPUTFILENAME || 'dam.csv';
 const outputFileName = process.env.OUTPUTFILENAME || 'results.txt';
 
+// Fails when the whole thing has one slope, and so it picks the last hour as min/max. Then goes on and tries to deal with the next hour
+
 // Todo: Reorganize into different objects, use scoping rather than passing variables. Maybe a battery object, or an hour-of-battery-capacity object?
 // Visualize!
 // Figure out how to do cash flow vs. profit - the energy in the battery has some value that you neglect with a purely cashflow analysis (as I'm doing)
@@ -35,111 +37,20 @@ HASP - Hour ahead scheduleing process. .
 AS - Ancillary Services
 */
 
-
-class PriceScheme {
-  constructor() {
-    this.initialBatteryState = 0;//hours of charge
-    this.initialMoney = 0; // 
-    this.batteryLim = 6; //hours
-    this.data = [];
+class Battery {
+  constructor(initialBatteryState = 1, batteryLim = 2) {
+    this.batteryState = initialBatteryState // hours of charge
+    this.batteryLim = batteryLim; // hours
+    this.initialMoney = 0;
+    this.marginalCashFlow = [];
+    this.priceSchemes = [];
     this.log = [];
-    this.marginalCashFlow = []
   }
-  import(){
-    debugger;
-    console.log(process.env.FILEPATH)
-    console.log(`${filepath}/${inputFileName}`)
-    csv()
-      .fromFile(`${filepath}/${inputFileName}`)
-      .then((jsonObj)=>{ 
-        this.formatImport(jsonObj);
-    })
-  }
-  formatImport(jsonObj) {
-    const energyPrice = jsonObj.filter((hour) => {
-      return hour.XML_DATA_ITEM === 'LMP_ENE_PRC'
-    })
-    const simplified = energyPrice.map((hour, index) => {
-      const startTime = moment(hour.INTERVALSTARTTIME_GMT);
-      const endTime = moment(hour.INTERVALENDTIME_GMT);
-      return {
-        operatingHour: parseInt(hour.OPR_HR),
-        startTime: startTime.toObject(),
-        endTime: endTime.toObject(),
-        price: parseFloat(hour.MW),
-        duration: moment.duration(endTime.diff(startTime)).as("minutes")
-      }
-    });
-    this.data = simplified.sort((prev, curr) => prev.operatingHour - curr.operatingHour);
-
-    priceScheme.plan();
-    console.log(priceScheme.calcAccountBalance())
-    console.log(priceScheme.calcStateOfCharge())
-  }
-  plan(){ 
-    let data = this.data;
-    // Sell first action - energy in battery
-    for (let i = 0; i < this.initialBatteryState; i++) {
-      const marginalHour = i
-      data = this.findNextMax(data, 0, marginalHour);
-      this.marginalCashFlow.push({
-        value: this.calcAccountBalance(marginalHour),
-        firstMove: 'sell'
-      })
-    }
-    // Buy first action - spare capacity in battery
-    for (let i = 0; i < this.batteryLim - this.initialBatteryState; i++) {
-      const marginalHour = i + this.initialBatteryState;
-      data = this.findNextMin(data, 0, marginalHour);
-      this.marginalCashFlow.push({
-        value: this.calcAccountBalance(marginalHour),
-        firstMove: 'buy'
-      })
-    }
-
-  }
-  findNextMax(data, i, marginalHour){
-    while (i < data.length && !this.isMax(data, i)) {
-      i++
-    }
-    this.sell(data[i], marginalHour);
-    // remove record from data
-    data.splice(i, 1);
-    if (i < data.length) {
-      return this.findNextMin(data, i, marginalHour);
-    } else {
-      return data;
-    }
-  }
-  findNextMin(data, i, marginalHour){
-    while (i < data.length && !this.isMin(data, i)) {
-      i++
-    }
-    this.buy(data[i], marginalHour);
-    // remove record from data
-    data.splice(i, 1);
-    if (i < data.length) {
-      return this.findNextMax(data, i, marginalHour);
-    } else {
-      return data;
-    }
-  }
-  isMax(data, i) {
-    const prevPrice = (i - 1 >= 0) ? data[i - 1].price : 0
-    const price = data[i].price
-    const nextPrice = (i + 1 < data.length) ? data[i + 1].price : 0;
-    return price > prevPrice && price > nextPrice;
-  }
-  isMin(data, i) {
-    const prevPrice = (i - 1 >= 0) ? data[i - 1].price : Infinity
-    const price = data[i].price
-    const nextPrice = (i + 1 < data.length) ? data[i + 1].price : Infinity;
-    return price < prevPrice && price < nextPrice;
+  sortLog(){
+    this.log = this.log.sort((prev, next)=> prev.operatingHour-next.operatingHour)
+    console.log(this.log)
   }
   buy(hour, marginalHour){
-    if (!hour) {
-      debugger;
-    }
     this.log.push({
       transaction: 'buy',
       price: hour.price,
@@ -148,9 +59,6 @@ class PriceScheme {
     });
   }
   sell(hour, marginalHour){
-    if (!hour) {
-      debugger;
-    }
     this.log.push({
       transaction: 'sell',
       price: hour.price * -1,
@@ -179,14 +87,112 @@ class PriceScheme {
         console.warn(`state of charge out of bounds. Value of ${sum} at index ${this.log[index].index} and operating hour ${this.log[index].operatingHour}`);
       }
       return sum
-    }, this.initialBatteryState);
+    }, this.batteryState);
   }
 
 }
 
-const priceScheme = new PriceScheme;
-priceScheme.import();
 
+class PriceScheme {
+  constructor(battery, path) {
+    this.path = path;
+    this.battery = battery;
+    this.timeLength = 1; // hours - need to implement
+    this.remainingHours = [];
+  }
+  import(){
+    csv()
+      .fromFile(this.path)
+      .then((jsonObj)=>{ 
+        this.formatImport(jsonObj);
+    })
+  }
+  formatImport(jsonObj) {
+    const energyPrice = jsonObj.filter((hour) => {
+      return hour.XML_DATA_ITEM === 'LMP_ENE_PRC'
+    })
+    const simplified = energyPrice.map((hour, index) => {
+      const startTime = moment(hour.INTERVALSTARTTIME_GMT);
+      const endTime = moment(hour.INTERVALENDTIME_GMT);
+      return {
+        operatingHour: parseInt(hour.OPR_HR),
+        startTime: startTime.toObject(),
+        endTime: endTime.toObject(),
+        price: parseFloat(hour.MW),
+        duration: moment.duration(endTime.diff(startTime)).as("minutes")
+      }
+    });
+    this.remainingHours = simplified.sort((prev, curr) => prev.operatingHour - curr.operatingHour);
+
+    this.plan();
+    console.log(this.battery.calcAccountBalance())
+    console.log(this.battery.calcStateOfCharge())
+    this.battery.sortLog()
+  }
+  plan(){ 
+    // Sell first action - energy in battery
+    for (let i = 0; i < this.battery.batteryState; i++) {
+      const marginalHour = i
+      this.findNextMax(0, marginalHour);
+      this.battery.marginalCashFlow.push({
+        value: this.battery.calcAccountBalance(marginalHour),
+        firstMove: 'sell'
+      })
+    }
+    // Buy first action - spare capacity in battery
+    for (let i = 0; i < this.battery.batteryLim - this.battery.batteryState; i++) {
+      const marginalHour = i + this.battery.batteryState;
+      this.findNextMin(0, marginalHour);
+      this.battery.marginalCashFlow.push({
+        value: this.battery.calcAccountBalance(marginalHour),
+        firstMove: 'buy'
+      })
+    }
+  }
+  findNextMax(i, marginalHour){
+    while (i < this.remainingHours.length && !this.isMax(i)) {
+      i++
+    }
+    this.battery.sell(this.remainingHours[i], marginalHour);
+    // remove record from data
+    this.remainingHours.splice(i, 1);
+    if (i + 1 < this.remainingHours.length) {
+      this.findNextMin(i, marginalHour);
+    } 
+  }
+  findNextMin(i, marginalHour){
+    while (i < this.remainingHours.length && !this.isMin(i)) {
+      i++
+    }
+    this.battery.buy(this.remainingHours[i], marginalHour);
+    // remove record from data
+    this.remainingHours.splice(i, 1);
+    if (i + 1 < this.remainingHours.length) {
+      this.findNextMax(i, marginalHour);
+    }
+  }
+  isMax(i) {
+    const prevPrice = (i - 1 >= 0) ? this.remainingHours[i - 1].price : 0;
+    const price = this.remainingHours[i].price;
+    const nextPrice = (i + 1 < this.remainingHours.length) ? this.remainingHours[i + 1].price : 0;
+    return price > prevPrice && price > nextPrice;
+  }
+  isMin(i) {
+    const prevPrice = (i - 1 >= 0) ? this.remainingHours[i - 1].price : Infinity;
+    const price = this.remainingHours[i].price;
+    const nextPrice = (i + 1 < this.remainingHours.length) ? this.remainingHours[i + 1].price : Infinity;
+    return price < prevPrice && price < nextPrice;
+  }
+
+
+}
+
+
+let battery = new Battery(3,3)
+let priceScheme = new PriceScheme(battery, `${filepath}/${inputFileName}`);
+priceScheme.import();
+// let priceScheme2 = new PriceScheme(battery, `${filepath}/5min.csv`) ;
+// priceScheme2.import();
 
 // situations -
 

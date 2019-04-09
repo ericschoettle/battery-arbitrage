@@ -1,10 +1,10 @@
 {
-  "name": "energy",
+  "name": "battery-arbitrage",
   "version": "1.0.0",
   "description": "Playinng with energy data",
   "main": "index.js",
   "bin": {
-    "energy": "./index.js"
+    "battery-arbitrage": "./index.js"
   },
   "private": true,
   "author": "Eric Schoettle",
